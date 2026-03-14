@@ -1,0 +1,9 @@
+.env
+reports/
+
+.codex/
+
+.claude/*
+!.claude/skills/
+!.claude/skills/**
+
