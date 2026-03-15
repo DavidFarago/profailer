@@ -141,22 +141,63 @@ Search Arxiv for the person's publications in AI-related categories. Use the aff
 
 Search Google Scholar for the person's publications and citation data. By now you have paper titles and affiliations from three sources, so you can verify results and fill in gaps.
 
-**Steps:**
-1. Use WebFetch to fetch:
-   ```
-   https://serpapi.com/search?engine=google_scholar&q=author:FIRSTNAME+LASTNAME&api_key=SERP_API_KEY&num=20
-   ```
+This phase uses up to three SERP API engines. Always use the SERP API engines, do NOT fetch Google Scholar profile pages directly with WebFetch as Google Scholar uses client-side JavaScript rendering, so WebFetch will only get empty HTML/CSS/JS scaffolding.
 
-2. If the user provided a Google Scholar profile URL, also fetch it with WebFetch to get their profile page data.
+### Step 1 — Obtain the Google Scholar `author_id`
 
-3. From the results, extract:
-   - Paper titles, snippets, and citation counts from `organic_results`
-   - Total estimated results from `search_information`
-   - Any author profile links
+The `author_id` is required to fetch profile-level metrics (h-index, total citations, i10-index). Obtain it using the first method that succeeds:
 
-4. Cross-reference with Arxiv and OpenAlex results to confirm identity.
+**Method A** — Extract from user-provided URL (most reliable):
+If the user provided a Google Scholar profile URL (e.g., `https://scholar.google.com/citations?user=7q71T-IAAAAJ&hl=en`), extract the `author_id` from the `user=` query parameter (e.g., `7q71T-IAAAAJ`).
 
-5. Record:
+**Method B** — Search via SERP API Profiles engine:
+Use WebFetch to fetch:
+```
+https://serpapi.com/search?engine=google_scholar_profiles&mauthors=FIRSTNAME+LASTNAME&api_key=SERP_API_KEY
+```
+This returns a `profiles` array where each entry contains `author_id`, `name`, `affiliations`, `cited_by`, and `email`. Match the correct profile using affiliation/institution data from Phase 1. **Note**: This engine may be discontinued by Google (requires login). If it returns a 400/error, fall through to Method C.
+
+**Method C** — Web search fallback:
+Use WebSearch to query:
+```
+"FIRSTNAME LASTNAME" site:scholar.google.com
+```
+Extract the `author_id` from any Google Scholar profile URL in the results (the `user=` parameter in URLs like `https://scholar.google.com/citations?user=XXXX&hl=en`).
+
+If none of the methods yield an `author_id`, skip Step 2 and proceed to Step 3 (paper search only).
+
+### Step 2 — Fetch profile metrics via `google_scholar_author` engine
+
+Once you have the `author_id`, use WebFetch to fetch:
+```
+https://serpapi.com/search?engine=google_scholar_author&author_id=AUTHOR_ID&api_key=SERP_API_KEY&num=20
+```
+
+From the response, extract:
+- **Author info**: `author.name`, `author.affiliations`, `author.email`, `author.interests`
+- **Citation metrics** from `cited_by.table`: total citations (all + recent), h-index (all + recent), i10-index (all + recent)
+- **Citation history** from `cited_by.graph`: yearly citation counts
+- **Top articles** from `articles`: title, authors, publication venue, year, `cited_by.value`
+
+These Google Scholar metrics are typically higher than OpenAlex because Google Scholar indexes a broader set of sources. Record both for comparison in the report.
+
+### Step 3 — Search for papers via `google_scholar` engine
+
+Use WebFetch to fetch:
+```
+https://serpapi.com/search?engine=google_scholar&q=author:FIRSTNAME+LASTNAME&api_key=SERP_API_KEY&num=20
+```
+
+From the results, extract:
+- Paper titles, snippets, and citation counts from `organic_results`
+- Total estimated results from `search_information`
+- Any author profile links (these may contain `author_id` as a bonus)
+
+### Step 4 — Cross-reference and record
+
+1. Cross-reference with Arxiv and OpenAlex results to confirm identity.
+2. Record:
+   - Google Scholar profile metrics (h-index, citations, i10-index) — prefer these over OpenAlex when available, as they are typically more complete
    - Top papers by citation count
    - Publication venues mentioned in snippets
    - Total citation counts visible
