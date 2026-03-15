@@ -207,15 +207,19 @@ From the results, extract:
 
 Use Claude's built-in **WebSearch** tool to find the person's broader AI presence on the web. By this point you know their research area, affiliation, key papers, and have harvested URLs from GitHub (homepage, Twitter). Use all of this to craft targeted queries.
 
+Use WebSearch as the primary discovery tool because search engines have already rendered and indexed the pages, so their snippets contain the actual content. 
+The WebFetch tool downloads raw HTML but does **not** execute JavaScript. Many modern sites (LinkedIn, Twitter/X, Google Scholar, SPAs) render content via client-side JavaScript, so WebFetch returns empty scaffolding from these sites. Consequently, only attempt WebFetch on pages likely to be **server-rendered** (institutional/university pages, static personal websites, ResearchGate, DBLP, API endpoints).
+
 **Steps:**
-1. Run WebSearch queries (2-3 queries):
+1. Run WebSearch queries (2-3 queries) — this is the primary discovery mechanism:
    - `"FIRSTNAME LASTNAME" AI researcher` (or their specific affiliation/lab if known from earlier phases)
    - `"FIRSTNAME LASTNAME" [specific research area or best-known paper from earlier phases]`
 
-2. Fetch any **URLs harvested from earlier phases** with WebFetch:
-   - Any URLs the user provided in the original input (LinkedIn, personal site, etc.)
-   - Homepage URL from GitHub `blog` field (Phase 2)
-   - Twitter profile from GitHub `twitter_username` field (Phase 2) — fetch `https://x.com/USERNAME`
+2. Optionally fetch **server-rendered URLs** with WebFetch for additional detail:
+   - Institutional/university profile pages (e.g., `*.edu`, `*.ac.uk`, research institute sites)
+   - Static personal websites or academic homepages
+   - ResearchGate, DBLP, or similar server-rendered academic profiles
+   - **Do NOT attempt** WebFetch on: LinkedIn, Twitter/X, Google Scholar, or other JS-heavy sites — these will fail or return empty content
 
 3. From all web results, extract:
    - Current role and affiliation
