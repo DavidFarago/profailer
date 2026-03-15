@@ -56,9 +56,53 @@ Look up the person's academic profile and citation metrics on OpenAlex. This is 
    - Publication venue (journal/conference name)
    - Whether it's open access
 
-## Phase 2 — Arxiv Search
+## Phase 2 — GitHub Search
 
-Search Arxiv for the person's publications in AI-related categories. Use the affiliation and topics from Phase 1 to help disambiguate.
+Search GitHub for the person's profile and repositories. The bio, company, and homepage fields help confirm identity, and harvested URLs (homepage, Twitter) feed into the Web Presence phase later.
+
+**Steps:**
+1. Use WebFetch to search for the user:
+   ```
+   https://api.github.com/search/users?q=FIRSTNAME+LASTNAME
+   ```
+
+2. From the search results, identify the most likely match by cross-referencing the `login`, `bio`, or `avatar` with the affiliation and research area known from Phase 1.
+
+3. Fetch the full profile of the matched user:
+   ```
+   https://api.github.com/users/USERNAME
+   ```
+   Extract:
+   - `name` — display name
+   - `bio` — short biography
+   - `company` — current employer/affiliation
+   - `blog` — homepage URL (often links to personal/academic page)
+   - `location`
+   - `public_repos` — number of public repositories
+   - `followers`
+   - `twitter_username`
+
+4. Fetch their top repositories by stars:
+   ```
+   https://api.github.com/users/USERNAME/repos?sort=stars&per_page=10
+   ```
+   For each repo, note:
+   - `name` and `description`
+   - `stargazers_count`
+   - `language`
+   - Whether it relates to AI/ML (look for keywords: model, neural, transformer, diffusion, RL, NLP, CV, dataset, benchmark, paper implementation, etc.)
+
+5. Record:
+   - GitHub username and profile URL
+   - Bio, company, location
+   - **Harvested URLs**: `blog` (homepage), `twitter_username` → save these for Phase 5 (Web Presence)
+   - Total public repos and followers
+   - AI-relevant repos with star counts
+   - Any contributions to major AI projects (PyTorch, TensorFlow, HuggingFace, JAX, etc.)
+
+## Phase 3 — Arxiv Search
+
+Search Arxiv for the person's publications in AI-related categories. Use the affiliation and topics from Phase 1, and any GitHub bio/repos from Phase 2, to help disambiguate.
 
 **Steps:**
 1. Use Bash to run:
@@ -93,9 +137,9 @@ Search Arxiv for the person's publications in AI-related categories. Use the aff
 
 **Wait 3 seconds before the next API call** (Arxiv rate limit).
 
-## Phase 3 — Google Scholar Search (SERP API)
+## Phase 4 — Google Scholar Search (SERP API)
 
-Search Google Scholar for the person's publications and citation data. By now you have paper titles and affiliations from two sources, so you can verify results and fill in gaps.
+Search Google Scholar for the person's publications and citation data. By now you have paper titles and affiliations from three sources, so you can verify results and fill in gaps.
 
 **Steps:**
 1. Use WebFetch to fetch:
@@ -118,18 +162,21 @@ Search Google Scholar for the person's publications and citation data. By now yo
    - Total citation counts visible
    - Any additional papers not found on Arxiv or OpenAlex (journals, workshops, etc.)
 
-## Phase 4 — Web Presence Search
+## Phase 5 — Web Presence Search
 
-Use Claude's built-in **WebSearch** tool to find the person's broader AI presence on the web. By this point you know their research area, affiliation, and key papers, so you can craft targeted queries.
+Use Claude's built-in **WebSearch** tool to find the person's broader AI presence on the web. By this point you know their research area, affiliation, key papers, and have harvested URLs from GitHub (homepage, Twitter). Use all of this to craft targeted queries.
 
 **Steps:**
 1. Run WebSearch queries (2-3 queries):
    - `"FIRSTNAME LASTNAME" AI researcher` (or their specific affiliation/lab if known from earlier phases)
    - `"FIRSTNAME LASTNAME" [specific research area or best-known paper from earlier phases]`
 
-2. If the user provided any URLs (LinkedIn, personal site, etc.), fetch them with **WebFetch**.
+2. Fetch any **URLs harvested from earlier phases** with WebFetch:
+   - Any URLs the user provided in the original input (LinkedIn, personal site, etc.)
+   - Homepage URL from GitHub `blog` field (Phase 2)
+   - Twitter profile from GitHub `twitter_username` field (Phase 2) — fetch `https://x.com/USERNAME`
 
-3. From search results, extract:
+3. From all web results, extract:
    - Current role and affiliation
    - Awards and honors
    - Conference invited talks or keynotes
@@ -137,7 +184,7 @@ Use Claude's built-in **WebSearch** tool to find the person's broader AI presenc
    - Industry positions (if applicable)
    - Notable projects or open-source contributions
 
-## Phase 5 — Synthesis & Scoring
+## Phase 6 — Synthesis & Scoring
 
 Now synthesize all findings and assign a score.
 
@@ -182,7 +229,7 @@ Assign the score that best matches the overall evidence. A researcher need not m
 Conferences: NeurIPS, ICML, ICLR, AAAI, CVPR, ECCV, ICCV, ACL, EMNLP, NAACL, SIGIR, KDD, WWW, IJCAI, AISTATS, UAI, COLT
 Journals: JMLR, TPAMI, AIJ, Machine Learning, Neural Computation, Nature Machine Intelligence
 
-## Phase 6 — Output
+## Phase 7 — Output
 
 ### Terminal Summary
 Print a concise summary directly:
@@ -237,11 +284,18 @@ The report should follow this structure:
 ## Affiliations
 - [Institution, role, years if known]
 
+## GitHub Presence
+- **Profile**: [URL]
+- **Public repos**: N
+- **Followers**: N
+- **AI-relevant repos**: [list with star counts]
+
 ## Research Areas & Topics
 - [List of primary research topics from OpenAlex]
 
 ## Web Presence
 - **Current role**: ...
+- **Homepage**: [URL from GitHub blog field or web presence search, if found]
 - **Awards/honors**: ...
 - **Conference appearances**: ...
 - **Other notable mentions**: ...
@@ -251,6 +305,7 @@ The report should follow this structure:
 
 ## Data Sources
 - OpenAlex API (queried [date])
+- GitHub API (queried [date])
 - Arxiv API (queried [date])
 - Google Scholar via SERP API (queried [date])
 - Web Search (queried [date])
