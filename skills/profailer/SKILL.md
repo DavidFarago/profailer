@@ -8,6 +8,10 @@ You are an AI researcher profiling assistant. Your task is to research the perso
 
 **Input**: $ARGUMENTS
 
+## IMPORTANT: Execution Order
+
+**All phases MUST be executed strictly sequentially: Phase 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7. Do NOT run any phases in parallel.** Each phase depends on results from prior phases for disambiguation, targeted queries, and harvested URLs. Starting a phase before the previous one completes will produce inferior results.
+
 ## Phase 0 — Parse Input
 
 1. Extract the person's **full name** (first name + last name) from the input.
@@ -58,7 +62,7 @@ Look up the person's academic profile and citation metrics on OpenAlex. This is 
 
 ## Phase 2 — GitHub Search
 
-Search GitHub for the person's profile and repositories. The bio, company, and homepage fields help confirm identity, and harvested URLs (homepage, Twitter) feed into the Web Presence phase later.
+Search GitHub for the person's profile and repositories. The bio, company, and homepage fields help confirm identity, and harvested URLs (homepage, Twitter, Google Scholar) feed into later phases.
 
 **Steps:**
 1. Use WebFetch to search for the user:
@@ -82,7 +86,18 @@ Search GitHub for the person's profile and repositories. The bio, company, and h
    - `followers`
    - `twitter_username`
 
-4. Fetch their top repositories by stars:
+4. **Harvest Google Scholar URL** — check three places for a `scholar.google.com` link:
+   - The `blog` field (some researchers set this to their Scholar profile)
+   - The `bio` text (may contain a raw URL)
+   - The social accounts endpoint:
+     ```
+     https://api.github.com/users/USERNAME/social_accounts
+     ```
+     This returns an array of `{ provider, url }` objects. Look for any URL containing `scholar.google.com`.
+
+   If found, extract the `author_id` from the `user=` query parameter (e.g., from `https://scholar.google.com/citations?user=7q71T-IAAAAJ&hl=en` extract `7q71T-IAAAAJ`). Save this as `github_harvested_scholar_id` for use in Phase 3.
+
+5. Fetch their top repositories by stars:
    ```
    https://api.github.com/users/USERNAME/repos?sort=stars&per_page=10
    ```
@@ -92,54 +107,18 @@ Search GitHub for the person's profile and repositories. The bio, company, and h
    - `language`
    - Whether it relates to AI/ML (look for keywords: model, neural, transformer, diffusion, RL, NLP, CV, dataset, benchmark, paper implementation, etc.)
 
-5. Record:
+6. Record:
    - GitHub username and profile URL
    - Bio, company, location
-   - **Harvested URLs**: `blog` (homepage), `twitter_username` → save these for Phase 5 (Web Presence)
+   - **Harvested URLs**: `blog` (homepage), `twitter_username`, and any Google Scholar URL found → save for later phases
+   - `github_harvested_scholar_id` (if found) → critical input for Phase 3
    - Total public repos and followers
    - AI-relevant repos with star counts
    - Any contributions to major AI projects (PyTorch, TensorFlow, HuggingFace, JAX, etc.)
 
-## Phase 3 — Arxiv Search
+## Phase 3 — Google Scholar Search (SERP API)
 
-Search Arxiv for the person's publications in AI-related categories. Use the affiliation and topics from Phase 1, and any GitHub bio/repos from Phase 2, to help disambiguate.
-
-**Steps:**
-1. Use Bash to run:
-   ```
-   curl -s "http://export.arxiv.org/api/query?search_query=au:LASTNAME_FIRSTNAME&start=0&max_results=50&sortBy=submittedDate&sortOrder=descending"
-   ```
-   Replace `LASTNAME_FIRSTNAME` with the person's name (e.g., `lecun_yann`). Use underscores, no spaces.
-
-2. If the name is common and you got many results, also try a more specific query combining the author name with AI categories:
-   ```
-   curl -s "http://export.arxiv.org/api/query?search_query=au:LASTNAME_FIRSTNAME+AND+(cat:cs.AI+OR+cat:cs.LG+OR+cat:cs.CV+OR+cat:cs.CL+OR+cat:cs.NE+OR+cat:stat.ML)&start=0&max_results=50&sortBy=submittedDate&sortOrder=descending"
-   ```
-
-3. From the Atom XML response, extract for each paper:
-   - Title
-   - Published date
-   - Categories (primary and secondary)
-   - Journal reference (if present — this indicates conference/journal publication)
-   - Co-authors
-   - Abstract summary (first sentence)
-
-4. Cross-reference with OpenAlex results from Phase 1 to confirm you have the right person (matching paper titles, co-authors).
-
-5. Identify papers published at **top AI venues** by checking the `<arxiv:journal_ref>` field for mentions of: NeurIPS, NIPS, ICML, ICLR, AAAI, CVPR, ECCV, ICCV, ACL, EMNLP, NAACL, SIGIR, KDD, WWW, IJCAI, AISTATS, UAI, COLT, JMLR, TPAMI, Nature, Science.
-
-6. Record:
-   - Total AI-related papers found
-   - Date range of publication activity
-   - Primary research categories/areas
-   - List of top-venue papers (title, venue, year)
-   - Notable co-authors (if recognizable)
-
-**Wait 3 seconds before the next API call** (Arxiv rate limit).
-
-## Phase 4 — Google Scholar Search (SERP API)
-
-Search Google Scholar for the person's publications and citation data. By now you have paper titles and affiliations from three sources, so you can verify results and fill in gaps.
+Search Google Scholar for the person's publications and citation data. This phase runs before the Arxiv search because Google Scholar results often contain Arxiv links and paper titles that make the Arxiv search more targeted.
 
 This phase uses up to three SERP API engines. Always use the SERP API engines, do NOT fetch Google Scholar profile pages directly with WebFetch as Google Scholar uses client-side JavaScript rendering, so WebFetch will only get empty HTML/CSS/JS scaffolding.
 
@@ -150,14 +129,17 @@ The `author_id` is required to fetch profile-level metrics (h-index, total citat
 **Method A** — Extract from user-provided URL (most reliable):
 If the user provided a Google Scholar profile URL (e.g., `https://scholar.google.com/citations?user=7q71T-IAAAAJ&hl=en`), extract the `author_id` from the `user=` query parameter (e.g., `7q71T-IAAAAJ`).
 
-**Method B** — Search via SERP API Profiles engine:
+**Method B** — Extract from GitHub profile (harvested in Phase 2):
+If `github_harvested_scholar_id` was found in Phase 2, use that `author_id` directly.
+
+**Method C** — Search via SERP API Profiles engine:
 Use WebFetch to fetch:
 ```
 https://serpapi.com/search?engine=google_scholar_profiles&mauthors=FIRSTNAME+LASTNAME&api_key=SERP_API_KEY
 ```
-This returns a `profiles` array where each entry contains `author_id`, `name`, `affiliations`, `cited_by`, and `email`. Match the correct profile using affiliation/institution data from Phase 1. **Note**: This engine may be discontinued by Google (requires login). If it returns a 400/error, fall through to Method C.
+This returns a `profiles` array where each entry contains `author_id`, `name`, `affiliations`, `cited_by`, and `email`. Match the correct profile using affiliation/institution data from Phase 1. **Note**: This engine may be discontinued by Google (requires login). If it returns a 400/error, fall through to Method D.
 
-**Method C** — Web search fallback:
+**Method D** — Web search fallback:
 Use WebSearch to query:
 ```
 "FIRSTNAME LASTNAME" site:scholar.google.com
@@ -178,6 +160,7 @@ From the response, extract:
 - **Citation metrics** from `cited_by.table`: total citations (all + recent), h-index (all + recent), i10-index (all + recent)
 - **Citation history** from `cited_by.graph`: yearly citation counts
 - **Top articles** from `articles`: title, authors, publication venue, year, `cited_by.value`
+- **Arxiv links**: collect any `arxiv.org` URLs from article links — these provide confirmed Arxiv paper IDs for Phase 4
 
 These Google Scholar metrics are typically higher than OpenAlex because Google Scholar indexes a broader set of sources. Record both for comparison in the report.
 
@@ -192,20 +175,66 @@ From the results, extract:
 - Paper titles, snippets, and citation counts from `organic_results`
 - Total estimated results from `search_information`
 - Any author profile links (these may contain `author_id` as a bonus)
+- **Arxiv links**: collect any `arxiv.org` URLs from result links — these provide confirmed Arxiv paper IDs for Phase 4
 
 ### Step 4 — Cross-reference and record
 
-1. Cross-reference with Arxiv and OpenAlex results to confirm identity.
+1. Cross-reference with OpenAlex results from Phase 1 to confirm identity.
 2. Record:
    - Google Scholar profile metrics (h-index, citations, i10-index) — prefer these over OpenAlex when available, as they are typically more complete
    - Top papers by citation count
    - Publication venues mentioned in snippets
    - Total citation counts visible
-   - Any additional papers not found on Arxiv or OpenAlex (journals, workshops, etc.)
+   - Any additional papers not found on OpenAlex (journals, workshops, etc.)
+   - **Harvested Arxiv IDs**: list of `arxiv.org/abs/XXXX.XXXXX` IDs found in Scholar results → input for Phase 4
+
+## Phase 4 — Arxiv Search
+
+Search Arxiv for the person's publications in AI-related categories. Use the affiliation and topics from Phase 1, GitHub bio/repos from Phase 2, and paper titles and Arxiv links from Phase 3 to target and disambiguate.
+
+**Steps:**
+1. **If Phase 3 yielded Arxiv IDs**: fetch those papers directly using WebFetch or Bash — these are confirmed papers for this person, no disambiguation needed:
+   ```
+   curl -s "http://export.arxiv.org/api/query?id_list=ARXIV_ID1,ARXIV_ID2,..."
+   ```
+
+2. **Also run a broad author search** to find papers not indexed by Google Scholar. Use Bash to run:
+   ```
+   curl -s "http://export.arxiv.org/api/query?search_query=au:LASTNAME_FIRSTNAME&start=0&max_results=50&sortBy=submittedDate&sortOrder=descending"
+   ```
+   Replace `LASTNAME_FIRSTNAME` with the person's name (e.g., `lecun_yann`). Use underscores, no spaces.
+
+3. If the name is common and you got many results, also try a more specific query combining the author name with AI categories:
+   ```
+   curl -s "http://export.arxiv.org/api/query?search_query=au:LASTNAME_FIRSTNAME+AND+(cat:cs.AI+OR+cat:cs.LG+OR+cat:cs.CV+OR+cat:cs.CL+OR+cat:cs.NE+OR+cat:stat.ML)&start=0&max_results=50&sortBy=submittedDate&sortOrder=descending"
+   ```
+
+4. From the Atom XML response, extract for each paper:
+   - Title
+   - Published date
+   - Categories (primary and secondary)
+   - Journal reference (if present — this indicates conference/journal publication)
+   - Co-authors
+   - Abstract summary (first sentence)
+
+5. Cross-reference with OpenAlex (Phase 1) and Google Scholar (Phase 3) results to confirm you have the right person (matching paper titles, co-authors).
+
+6. Identify papers published at **top AI venues** by checking the `<arxiv:journal_ref>` field for mentions of: 
+   - very best AI venues: NeurIPS, ICML, ICLR, 
+   - very good AI venues: NIPS, AAAI, CVPR, ECCV, ICCV, ACL, EMNLP, NAACL, SIGIR, KDD, WWW, IJCAI, AISTATS, UAI, COLT, JMLR, TPAMI, Nature, Science.
+
+7. Record:
+   - Total AI-related papers found
+   - Date range of publication activity
+   - Primary research categories/areas
+   - List of top-venue papers (title, venue, year)
+   - Notable co-authors (if recognizable)
+
+**Wait 3 seconds before the next API call** (Arxiv rate limit).
 
 ## Phase 5 — Web Presence Search
 
-Use Claude's built-in **WebSearch** tool to find the person's broader AI presence on the web. By this point you know their research area, affiliation, key papers, and have harvested URLs from GitHub (homepage, Twitter). Use all of this to craft targeted queries.
+Use Claude's built-in **WebSearch** tool to find the person's broader AI presence on the web. By this point you know their research area, affiliation, key papers from all prior phases, and have harvested URLs from GitHub (homepage, Twitter). Use all of this to craft targeted queries.
 
 Use WebSearch as the primary discovery tool because search engines have already rendered and indexed the pages, so their snippets contain the actual content. 
 The WebFetch tool downloads raw HTML but does **not** execute JavaScript. Many modern sites (LinkedIn, Twitter/X, Google Scholar, SPAs) render content via client-side JavaScript, so WebFetch returns empty scaffolding from these sites. Consequently, only attempt WebFetch on pages likely to be **server-rendered** (institutional/university pages, static personal websites, ResearchGate, DBLP, API endpoints).
