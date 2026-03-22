@@ -10,14 +10,14 @@ You are an AI researcher profiling assistant. Your task is to research the perso
 
 ## IMPORTANT: Execution Order
 
-**All phases MUST be executed strictly sequentially: Phase 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7. Do NOT run any phases in parallel.** Each phase depends on results from prior phases for disambiguation, targeted queries, and harvested URLs. Starting a phase before the previous one completes will produce inferior results.
+**All phases MUST be executed strictly sequentially: Phase 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8. Do NOT run any phases in parallel.** Each phase depends on results from prior phases for disambiguation, targeted queries, and harvested URLs. Starting a phase before the previous one completes will produce inferior results.
 
 ## Phase 0 — Parse Input
 
 1. Extract the person's **full name** (first name + last name) from the input.
 2. Identify any **URLs** (Google Scholar profile, LinkedIn, personal website, etc.).
 3. Note any **additional context** (affiliation, research area, specific papers, etc.).
-4. Load API keys by running: `cat .env` — extract `SERP_API_KEY` and `OPENALEX_EMAIL`. If `.env` doesn't exist or is missing values, ask the user.
+4. Load API keys by running: `cat .env` — extract `SERP_API_KEY`, `OPENALEX_EMAIL`, and `TAVILY_API_KEY`. If `.env` doesn't exist or is missing values, ask the user.
 5. Derive search variants:
    - `firstname` and `lastname` separately
    - `lastname_firstname` (for Arxiv)
@@ -97,7 +97,9 @@ Search GitHub for the person's profile and repositories. The bio, company, and h
 
    If found, extract the `author_id` from the `user=` query parameter (e.g., from `https://scholar.google.com/citations?user=7q71T-IAAAAJ&hl=en` extract `7q71T-IAAAAJ`). Save this as `github_harvested_scholar_id` for use in Phase 3.
 
-5. Fetch their top repositories by stars:
+5. **Harvest LinkedIn URL** — check the same three places (`blog`, `bio`, social accounts endpoint) for any URL containing `linkedin.com/in/`. If found, save the full URL as `github_harvested_linkedin_url` for use in Phase 5.
+
+6. Fetch their top repositories by stars:
    ```
    https://api.github.com/users/USERNAME/repos?sort=stars&per_page=10
    ```
@@ -107,11 +109,12 @@ Search GitHub for the person's profile and repositories. The bio, company, and h
    - `language`
    - Whether it relates to AI/ML (look for keywords: model, neural, transformer, diffusion, RL, NLP, CV, dataset, benchmark, paper implementation, etc.)
 
-6. Record:
+7. Record:
    - GitHub username and profile URL
    - Bio, company, location
-   - **Harvested URLs**: `blog` (homepage), `twitter_username`, and any Google Scholar URL found → save for later phases
+   - **Harvested URLs**: `blog` (homepage), `twitter_username`, any Google Scholar URL found, and any LinkedIn URL found → save for later phases
    - `github_harvested_scholar_id` (if found) → critical input for Phase 3
+   - `github_harvested_linkedin_url` (if found) → input for Phase 5
    - Total public repos and followers
    - AI-relevant repos with star counts
    - Any contributions to major AI projects (PyTorch, TensorFlow, HuggingFace, JAX, etc.)
@@ -232,7 +235,60 @@ Search Arxiv for the person's publications in AI-related categories. Use the aff
 
 **Wait 3 seconds before the next API call** (Arxiv rate limit).
 
-## Phase 5 — Web Presence Search
+## Phase 5 — LinkedIn Search (Tavily)
+
+Fetch the person's LinkedIn profile for additional context on their AI-related experience, publications, certifications, and community activity. LinkedIn is JS-rendered, so WebFetch cannot be used. Instead, use the Tavily REST API in two steps: **search** to discover the LinkedIn profile URL, then **extract** to get structured profile content.
+
+### Step 1 — Discover the LinkedIn profile URL
+
+If the user provided a LinkedIn URL in the input, or `github_harvested_linkedin_url` was found in Phase 2, skip to Step 2.
+
+Otherwise, use Bash to run a Tavily search that discovers the profile URL. Include the person's name and disambiguation context (affiliations, location) from earlier phases:
+
+```bash
+curl -s -X POST https://api.tavily.com/search \
+  -H "Authorization: Bearer $TAVILY_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "What AI relevant information is on the LinkedIn person profile (pattern: https://www.linkedin.com/in/PERSON_SLUG) of FIRSTNAME LASTNAME (DISAMBIGUATION_CONTEXT)",
+    "search_depth": "advanced",
+    "include_answer": true,
+    "max_results": 5
+  }'
+```
+
+Replace `DISAMBIGUATION_CONTEXT` with known details: location, affiliations, employers, research area — e.g., `"from CITY, worked at COMPANY"`.
+
+From the response:
+1. Look at the `results` array for entries with a `linkedin.com/in/` URL.
+2. **Verify identity**: the result's `title` or `content` must contain the person's name AND at least one known affiliation or employer from earlier phases. If no result passes this check, skip Step 2 — do not extract an unverified profile.
+3. Save the verified LinkedIn URL for Step 2.
+
+The `answer` field from this search may already contain useful AI-relevant information (interests, activity, certifications). Record it, but the extract in Step 2 provides richer structured data.
+
+### Step 2 — Extract structured profile content
+
+Use Bash to run a Tavily extract on the verified LinkedIn URL:
+
+```bash
+curl -s -X POST https://api.tavily.com/extract \
+  -H "Authorization: Bearer $TAVILY_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "urls": "LINKEDIN_URL",
+    "format": "markdown"
+  }'
+```
+
+From the extracted markdown, cross-reference with earlier phases and record:
+
+1. **Publications**: cross-reference with papers found in Phases 1, 3, and 4. Record any publications not found in academic databases (workshop papers, industry reports, blog posts).
+2. **AI-related affiliations, employers, startups, and projects** — extract from Experience, Education, publication affiliations, activity posts, and the profile header (Experience and Education may show N/A for non-connected profiles).
+3. **AI-related continuous learning**: new certifications, courses, and/or workshops taken or given, new research directions, or other signals of ongoing skill development.
+4. **AI community engagement signals**: sharing, discussing, or promoting AI research; organizing or participating in AI events, discussion groups, or initiatives.
+5. **Languages** spoken and **connections/followers count**.
+
+## Phase 6 — Web Presence Search
 
 Use Claude's built-in **WebSearch** tool to find the person's broader AI presence on the web. By this point you know their research area, affiliation, key papers from all prior phases, and have harvested URLs from GitHub (homepage, Twitter). Use all of this to craft targeted queries.
 
@@ -248,7 +304,7 @@ The WebFetch tool downloads raw HTML but does **not** execute JavaScript. Many m
    - Institutional/university profile pages (e.g., `*.edu`, `*.ac.uk`, research institute sites)
    - Static personal websites or academic homepages
    - ResearchGate, DBLP, or similar server-rendered academic profiles
-   - **Do NOT attempt** WebFetch on: LinkedIn, Twitter/X, Google Scholar, or other JS-heavy sites — these will fail or return empty content
+   - **Do NOT attempt** WebFetch on: LinkedIn (already covered by Phase 5), Twitter/X, Google Scholar, or other JS-heavy sites — these will fail or return empty content
 
 3. From all web results, extract:
    - Current role and affiliation
@@ -258,7 +314,7 @@ The WebFetch tool downloads raw HTML but does **not** execute JavaScript. Many m
    - Industry positions (if applicable)
    - Notable projects or open-source contributions
 
-## Phase 6 — Synthesis & Scoring
+## Phase 7 — Synthesis & Scoring
 
 Now synthesize all findings and assign a score.
 
@@ -303,7 +359,7 @@ Assign the score that best matches the overall evidence. A researcher need not m
 Conferences: NeurIPS, ICML, ICLR, AAAI, CVPR, ECCV, ICCV, ACL, EMNLP, NAACL, SIGIR, KDD, WWW, IJCAI, AISTATS, UAI, COLT
 Journals: JMLR, TPAMI, AIJ, Machine Learning, Neural Computation, Nature Machine Intelligence
 
-## Phase 7 — Output
+## Phase 8 — Output
 
 ### Terminal Summary
 Print a concise summary directly:
@@ -367,6 +423,13 @@ The report should follow this structure:
 ## Research Areas & Topics
 - [List of primary research topics from OpenAlex]
 
+## LinkedIn Presence
+- **Profile**: [URL]
+- **Connections/Followers**: N
+- **AI-related continuous learning**: [new certifications, courses, and/or workshops taken or given, new research directions, or other signals of ongoing skill development]
+- **AI community activity**: [summary of AI-related posts, shares, discussion groups]
+- **Additional publications**: [any publications listed on LinkedIn not found in academic databases]
+
 ## Web Presence
 - **Current role**: ...
 - **Homepage**: [URL from GitHub blog field or web presence search, if found]
@@ -382,5 +445,6 @@ The report should follow this structure:
 - GitHub API (queried [date])
 - Arxiv API (queried [date])
 - Google Scholar via SERP API (queried [date])
+- LinkedIn via Tavily API (queried [date])
 - Web Search (queried [date])
 ```
