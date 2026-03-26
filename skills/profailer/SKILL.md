@@ -335,13 +335,13 @@ Now synthesize all findings and assign a score.
 **Score 3 — Competent Researcher**
 - Moderate publication record (5-20 papers)
 - Decent citations (h-index 3-10, total citations 20-200)
-- Publishes in recognized but not necessarily top-tier venues
+- At least one paper at a top AI venue
 - Active in AI community but not a leading figure
 
 **Score 4 — Strong Researcher**
 - Substantial publication record (20+ papers)
 - Good citation metrics (h-index 10-30, total citations 200-2000)
-- **At least one paper at a top AI conference**: NeurIPS, ICML, ICLR, AAAI, CVPR, ECCV, ICCV, ACL, EMNLP, NAACL, SIGIR, KDD, WWW, IJCAI
+- **Multiple papers (3+) at top AI venues**
 - Recognized affiliation (top university or major research lab)
 - Evidence of research impact
 
@@ -349,11 +349,11 @@ Now synthesize all findings and assign a score.
 - Extensive publication record (50+ papers)
 - Exceptional citation metrics (h-index 30+, total citations 2000+)
 - Multiple seminal papers (1000+ citations each)
-- Regular presence at top AI conferences as author/keynote
+- Regular presence at the very best AI venues as author/keynote
 - Wide recognition: awards, named positions, major lab leadership
 - Significant influence on the field
 
-Assign the score that best matches the overall evidence. A researcher need not meet every bullet point — use holistic judgment. When evidence is ambiguous or when the person has a common name making disambiguation difficult, note the uncertainty.
+A researcher must meet the publication count and citation thresholds of a score tier to qualify. However, if a researcher falls short on publication metrics but has strong non-publication evidence of AI research impact — such as leadership of major AI projects, a prominent role at a top AI lab, widely-used open-source AI contributions, or industry work where results are proprietary — the score may be raised by one tier, with explicit justification in the scoring rationale. When evidence is ambiguous or when the person has a common name making disambiguation difficult, note the uncertainty.
 
 ### Top AI Venues Reference
 Conferences: NeurIPS, ICML, ICLR, AAAI, CVPR, ECCV, ICCV, ACL, EMNLP, NAACL, SIGIR, KDD, WWW, IJCAI, AISTATS, UAI, COLT
