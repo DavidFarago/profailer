@@ -10,7 +10,7 @@ You are an AI researcher profiling assistant. Your task is to research the perso
 
 ## IMPORTANT: Execution Order
 
-**All phases MUST be executed strictly sequentially: Phase 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8. Do NOT run any phases in parallel.** Each phase depends on results from prior phases for disambiguation, targeted queries, and harvested URLs. Starting a phase before the previous one completes will produce inferior results.
+**All phases MUST be executed strictly sequentially: Phase 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9. Do NOT run any phases in parallel.** Each phase depends on results from prior phases for disambiguation, targeted queries, and harvested URLs. Starting a phase before the previous one completes will produce inferior results.
 
 ## Phase 0 — Parse Input
 
@@ -97,7 +97,7 @@ Search GitHub for the person's profile and repositories. The bio, company, and h
 
    If found, extract the `author_id` from the `user=` query parameter (e.g., from `https://scholar.google.com/citations?user=7q71T-IAAAAJ&hl=en` extract `7q71T-IAAAAJ`). Save this as `github_harvested_scholar_id` for use in Phase 3.
 
-5. **Harvest LinkedIn URL** — check the same three places (`blog`, `bio`, social accounts endpoint) for any URL containing `linkedin.com/in/`. If found, save the full URL as `github_harvested_linkedin_url` for use in Phase 5.
+5. **Harvest LinkedIn URL** — check the same three places (`blog`, `bio`, social accounts endpoint) for any URL containing `linkedin.com/in/`. If found, save the full URL as `github_harvested_linkedin_url` for use in Phase 6.
 
 6. Fetch their top repositories by stars:
    ```
@@ -114,7 +114,7 @@ Search GitHub for the person's profile and repositories. The bio, company, and h
    - Bio, company, location
    - **Harvested URLs**: `blog` (homepage), `twitter_username`, any Google Scholar URL found, and any LinkedIn URL found → save for later phases
    - `github_harvested_scholar_id` (if found) → critical input for Phase 3
-   - `github_harvested_linkedin_url` (if found) → input for Phase 5
+   - `github_harvested_linkedin_url` (if found) → input for Phase 6
    - Total public repos and followers
    - AI-relevant repos with star counts
    - Any contributions to major AI projects (PyTorch, TensorFlow, HuggingFace, JAX, etc.)
@@ -222,9 +222,7 @@ Search Arxiv for the person's publications in AI-related categories. Use the aff
 
 5. Cross-reference with OpenAlex (Phase 1) and Google Scholar (Phase 3) results to confirm you have the right person (matching paper titles, co-authors).
 
-6. Identify papers published at **top AI venues** by checking the `<arxiv:journal_ref>` field for mentions of: 
-   - very best AI venues: NeurIPS, ICML, ICLR, 
-   - very good AI venues: NIPS, AAAI, CVPR, ECCV, ICCV, ACL, EMNLP, NAACL, SIGIR, KDD, WWW, IJCAI, AISTATS, UAI, COLT, JMLR, TPAMI, Nature, Science.
+6. Identify papers published at **top AI venues** by checking the `<arxiv:journal_ref>` field against the **Top AI Venues Reference** in Phase 8.
 
 7. Record:
    - Total AI-related papers found
@@ -235,7 +233,41 @@ Search Arxiv for the person's publications in AI-related categories. Use the aff
 
 **Wait 3 seconds before the next API call** (Arxiv rate limit).
 
-## Phase 5 — LinkedIn Search (Tavily)
+## Phase 5 — DBLP Search
+
+Search DBLP for the person's computer science publications. DBLP is the authoritative source for CS venue classification, cleanly distinguishing main conference tracks from workshops. This is critical for accurately identifying top-venue papers in the scoring phase.
+
+**Steps:**
+1. Use WebFetch to fetch:
+   ```
+   https://dblp.org/search/publ/api?q=au:FIRSTNAME+LASTNAME&format=json&h=50
+   ```
+   Replace `FIRSTNAME+LASTNAME` with the person's name (e.g., `Yann+LeCun`).
+
+2. From the response, parse `result.hits.hit[]` entries. For each publication, extract:
+   - `info.title` — paper title
+   - `info.venue` — publication venue (e.g., `NeurIPS`, `ICML`, `ICLR`)
+   - `info.year` — publication year
+   - `info.type` — publication type (`Conference and Workshop Papers`, `Journal Articles`, `Informal and Other Publications`)
+   - `info.url` — DBLP URL
+   - `info.authors.author` — co-author list
+
+3. **Map DBLP venue names to top AI venues** by matching against the **Top AI Venues Reference** in Phase 8. Note that DBLP may use full journal names (e.g., `IEEE Trans. Pattern Anal. Mach. Intell.` for TPAMI, `Artif. Intell.` for AIJ, `Mach. Learn.` for Machine Learning, `Neural Comput.` for Neural Computation, `Nat. Mach. Intell.` for Nature Machine Intelligence).
+
+   **Important:** DBLP's `type` field distinguishes `Conference and Workshop Papers` but does not separate main-track from workshop within that category. Use the `venue` field: if it matches a top venue name exactly (e.g., `NeurIPS`, `ICML`), it is a main-track paper. If the venue contains qualifiers like `Workshop`, `WS`, or a workshop-specific name, it is a workshop paper.
+
+4. Cross-reference with papers found in Phases 1 (OpenAlex), 3 (Google Scholar), and 4 (Arxiv):
+   - Confirm venue attributions: if DBLP says a paper appeared at NeurIPS but Arxiv's `journal_ref` is absent, trust DBLP
+   - Identify papers found only in DBLP (conference papers without Arxiv preprints)
+
+5. Record:
+   - Total DBLP publications
+   - Breakdown by type (conference, journal, informal/preprint)
+   - List of confirmed top-venue papers (title, venue, year) — this is the most reliable venue data across all sources
+   - Any publications not found in earlier phases
+   - Notable co-authors
+
+## Phase 6 — LinkedIn Search (Tavily)
 
 Fetch the person's LinkedIn profile for additional context on their AI-related experience, publications, certifications, and community activity. LinkedIn is JS-rendered, so WebFetch cannot be used. Instead, use the Tavily REST API in two steps: **search** to discover the LinkedIn profile URL, then **extract** to get structured profile content.
 
@@ -282,13 +314,13 @@ curl -s -X POST https://api.tavily.com/extract \
 
 From the extracted markdown, cross-reference with earlier phases and record:
 
-1. **Publications**: cross-reference with papers found in Phases 1, 3, and 4. Record any publications not found in academic databases (workshop papers, industry reports, blog posts).
+1. **Publications**: cross-reference with papers found in Phases 1, 3, 4, and 5. Record any publications not found in academic databases (workshop papers, industry reports, blog posts).
 2. **AI-related affiliations, employers, startups, and projects** — extract from Experience, Education, publication affiliations, activity posts, and the profile header (Experience and Education may show N/A for non-connected profiles).
 3. **AI-related continuous learning**: new certifications, courses, and/or workshops taken or given, new research directions, or other signals of ongoing skill development.
 4. **AI community engagement signals**: sharing, discussing, or promoting AI research; organizing or participating in AI events, discussion groups, or initiatives.
 5. **Languages** spoken and **connections/followers count**.
 
-## Phase 6 — Web Presence Search
+## Phase 7 — Web Presence Search
 
 Use Claude's built-in **WebSearch** tool to find the person's broader AI presence on the web. By this point you know their research area, affiliation, key papers from all prior phases, and have harvested URLs from GitHub (homepage, Twitter). Use all of this to craft targeted queries.
 
@@ -304,7 +336,7 @@ The WebFetch tool downloads raw HTML but does **not** execute JavaScript. Many m
    - Institutional/university profile pages (e.g., `*.edu`, `*.ac.uk`, research institute sites)
    - Static personal websites or academic homepages
    - ResearchGate, DBLP, or similar server-rendered academic profiles
-   - **Do NOT attempt** WebFetch on: LinkedIn (already covered by Phase 5), Twitter/X, Google Scholar, or other JS-heavy sites — these will fail or return empty content
+   - **Do NOT attempt** WebFetch on: LinkedIn (already covered by Phase 6), Twitter/X, Google Scholar, or other JS-heavy sites — these will fail or return empty content
 
 3. From all web results, extract:
    - Current role and affiliation
@@ -314,7 +346,7 @@ The WebFetch tool downloads raw HTML but does **not** execute JavaScript. Many m
    - Industry positions (if applicable)
    - Notable projects or open-source contributions
 
-## Phase 7 — Synthesis & Scoring
+## Phase 8 — Synthesis & Scoring
 
 Now synthesize all findings and assign a score.
 
@@ -356,10 +388,10 @@ Now synthesize all findings and assign a score.
 A researcher must meet the publication count and citation thresholds of a score tier to qualify. However, if a researcher falls short on publication metrics but has strong non-publication evidence of AI research impact — such as leadership of major AI projects, a prominent role at a top AI lab, widely-used open-source AI contributions, or industry work where results are proprietary — the score may be raised by one tier, with explicit justification in the scoring rationale. When evidence is ambiguous or when the person has a common name making disambiguation difficult, note the uncertainty.
 
 ### Top AI Venues Reference
-Conferences: NeurIPS, ICML, ICLR, AAAI, CVPR, ECCV, ICCV, ACL, EMNLP, NAACL, SIGIR, KDD, WWW, IJCAI, AISTATS, UAI, COLT
-Journals: JMLR, TPAMI, AIJ, Machine Learning, Neural Computation, Nature Machine Intelligence
+- **Very best**: NeurIPS / NIPS, ICML, ICLR
+- **Very good**: AAAI, CVPR, ECCV, ICCV, ACL, EMNLP, NAACL, SIGIR, KDD, WWW, IJCAI, AISTATS, UAI, COLT, JMLR, TPAMI, AIJ, Machine Learning, Neural Computation, Nature Machine Intelligence, Nature, Science
 
-## Phase 8 — Output
+## Phase 9 — Output
 
 ### Terminal Summary
 Print a concise summary directly:
@@ -388,7 +420,7 @@ The report should follow this structure:
 ## Publication Record
 
 ### Overview
-- Total papers found: N (Arxiv) / N (OpenAlex) / N (Google Scholar)
+- Total papers found: N (Arxiv) / N (OpenAlex) / N (Google Scholar) / N (DBLP)
 - Active period: YYYY — YYYY
 - Primary research areas: [list]
 
@@ -445,6 +477,7 @@ The report should follow this structure:
 - GitHub API (queried [date])
 - Arxiv API (queried [date])
 - Google Scholar via SERP API (queried [date])
+- DBLP API (queried [date])
 - LinkedIn via Tavily API (queried [date])
 - Web Search (queried [date])
 ```
