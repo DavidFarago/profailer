@@ -1,5 +1,5 @@
 ---
-description: Research whether a person is a good AI researcher and generate a scored profile report
+description: Research whether a person is a good AI researcher and generate a profile report
 argument-hint: <name and optional context, URLs, affiliation, etc.>
 allowed-tools: WebFetch, WebSearch, Bash, Write, Read
 ---
@@ -235,7 +235,7 @@ Search Arxiv for the person's publications in AI-related categories. Use the aff
 
 ## Phase 5 — DBLP Search
 
-Search DBLP for the person's computer science publications. DBLP is the authoritative source for CS venue classification, cleanly distinguishing main conference tracks from workshops. This is critical for accurately identifying top-venue papers in the scoring phase.
+Search DBLP for the person's computer science publications. DBLP is the authoritative source for CS venue classification, cleanly distinguishing main conference tracks from workshops. This is critical for accurately identifying top-venue papers in the evaluation phase.
 
 **Steps:**
 1. Use WebFetch to fetch:
@@ -346,38 +346,38 @@ The WebFetch tool downloads raw HTML but does **not** execute JavaScript. Many m
    - Industry positions (if applicable)
    - Notable projects or open-source contributions
 
-## Phase 8 — Synthesis & Scoring
+## Phase 8 — Synthesis & Evaluation
 
-Now synthesize all findings and assign a score.
+Now synthesize all findings and determine the evaluation tier.
 
-### Scoring Rubric (1-5)
+### Evaluation Criteria From Lowest To Highest Tier
 
-**Score 1 — No AI Research Experience**
+**No Experience in AI Research**
 - No papers found on Arxiv in AI/ML categories
 - No OpenAlex profile or negligible metrics (h-index 0, no citations)
 - No Google Scholar results related to AI research
 - Web presence shows no connection to AI research
 
-**Score 2 — Minimal Research**
+**Minimal Research**
 - A few papers (1-5) on Arxiv, none at top venues
 - Low citation metrics (h-index < 3, total citations < 20)
 - Papers are in peripheral or non-core AI areas
 - No evidence of top venue publications
 
-**Score 3 — Competent Researcher**
+**Competent Research**
 - Moderate publication record (5-20 papers)
 - Decent citations (h-index 3-10, total citations 20-200)
 - At least one paper at a top AI venue
 - Active in AI community but not a leading figure
 
-**Score 4 — Strong Researcher**
+**Strong Research**
 - Substantial publication record (20+ papers)
 - Good citation metrics (h-index 10-30, total citations 200-2000)
 - **Multiple papers (3+) at top AI venues**
 - Recognized affiliation (top university or major research lab)
 - Evidence of research impact
 
-**Score 5 — Luminary**
+**Luminary Research**
 - Extensive publication record (50+ papers)
 - Exceptional citation metrics (h-index 30+, total citations 2000+)
 - Multiple seminal papers (1000+ citations each)
@@ -385,7 +385,13 @@ Now synthesize all findings and assign a score.
 - Wide recognition: awards, named positions, major lab leadership
 - Significant influence on the field
 
-A researcher must meet the publication count and citation thresholds of a score tier to qualify. However, if a researcher falls short on publication metrics but has strong non-publication evidence of AI research impact — such as leadership of major AI projects, a prominent role at a top AI lab, widely-used open-source AI contributions, or industry work where results are proprietary — the score may be raised by one tier, with explicit justification in the scoring rationale. When evidence is ambiguous or when the person has a common name making disambiguation difficult, note the uncertainty.
+A researcher must meet all criteria of a tier to qualify, e.g. for Competent Researcher:
+  * a moderate publication record (5-20 papers)
+  * decent citations (h-index 3-10, total citations 20-200)
+  * at least one paper at a top AI venue
+  * active in AI community but not a leading figure
+
+However, if a researcher falls short on publication metrics but has strong non-publication evidence of AI research impact — such as leadership of major AI projects, a prominent role at a top AI lab, widely-used open-source AI contributions, or industry work where results are proprietary — the evaluation may be raised by one tier, with explicit justification in the rationale. When evidence is ambiguous or when the person has a common name making disambiguation difficult, note the uncertainty.
 
 ### Top AI Venues Reference
 - **Very best**: NeurIPS / NIPS, ICML, ICLR
@@ -398,9 +404,14 @@ Print a concise summary directly:
 
 ```
 ## Profailer Result: [Full Name]
-**Score**: [N]/5 — [Label]
 **Summary**: [2-3 sentence executive summary of their research profile]
 **Key stats**: [h-index, total citations, paper count, top venue papers]
+**Evaluation criteria**: List each criterion of the highest tier the researcher qualified for, and how the researcher fulfilled the criterion, referencing specific evidence from the data sources. Note any uncertainties or disambiguation issues. If the evaluation tier was raised by one tier, give the explicit justification. End the item with name of the corresponding tier. More precisely, the last sentence of the item should be identical to one of the following five sentences:
+* "Therefore, there is no experience in AI research." or
+* "Therefore, there is minimal research." or
+* "Therefore, there is competent research." or
+* "Therefore, there is strong research." or
+* "Therefore, there is luminary research."
 **Report saved to**: reports/[name-slug]-YYYY-MM-DD-I.md (I being a counter)
 ```
 
@@ -412,10 +423,20 @@ The report should follow this structure:
 ```markdown
 # AI Researcher Profile: [Full Name]
 **Generated**: [Date]
-**Score**: [N]/5 — [Label]
 
 ## Executive Summary
 [3-5 sentence summary of the person's AI research credentials, key contributions, and overall standing]
+
+## Key Stats
+[h-index, total citations, paper count, top venue papers]
+
+## Evaluation Criteria
+List each criterion of the highest tier the researcher qualified for, and how the researcher fulfilled the criterion, referencing specific evidence from the data sources. Note any uncertainties or disambiguation issues. If the evaluation tier was raised by one tier, give the explicit justification. End the section with name of the corresponding tier. More precisely, the last sentence of the section should be identical to one of the following five sentences:
+* "Therefore, there is no experience in AI research." or
+* "Therefore, there is minimal research." or
+* "Therefore, there is competent research." or
+* "Therefore, there is strong research." or
+* "Therefore, there is luminary research."
 
 ## Publication Record
 
@@ -468,9 +489,6 @@ The report should follow this structure:
 - **Awards/honors**: ...
 - **Conference appearances**: ...
 - **Other notable mentions**: ...
-
-## Scoring Rationale
-[Detailed paragraph explaining why this score was assigned, referencing specific evidence from each data source. Note any uncertainties or disambiguation issues.]
 
 ## Data Sources
 - OpenAlex API (queried [date])
